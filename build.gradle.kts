@@ -104,15 +104,15 @@ val plugins = listOf(
       deps = listOf("java", "org.jetbrains.plugins.gradle", "org.jetbrains.kotlin")
    ),
    PluginDescriptor(
-      since = "233.9802.16", // this version is 2023.3
+      since = "233.11799.241", // this version is 2023.3
       until = "233.*",
-      sdkVersion = "233.9802-EAP-CANDIDATE-SNAPSHOT",
+      sdkVersion = "233.11799.241",
       sourceFolder = "IC-233",
       deps = listOf("java", "org.jetbrains.plugins.gradle", "org.jetbrains.kotlin")
    ),
 )
 
-val productName = System.getenv("PRODUCT_NAME") ?: "IC-223"
+val productName = System.getenv("PRODUCT_NAME") ?: "IC-233"
 val jvmTarget = System.getenv("JVM_TARGET") ?: "11"
 val descriptor = plugins.first { it.sourceFolder == productName }
 
@@ -150,9 +150,7 @@ dependencies {
 
 sourceSets {
    main {
-      withConvention(KotlinSourceSet::class) {
-         kotlin.srcDirs("src/${descriptor.sourceFolder}/kotlin")
-      }
+      kotlin.srcDirs("src/${descriptor.sourceFolder}/kotlin")
       resources {
          srcDir("src/${descriptor.sourceFolder}/resources")
       }
