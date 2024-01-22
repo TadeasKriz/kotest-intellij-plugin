@@ -1,74 +1,42 @@
 package io.kotest.plugin.intellij.run
 
-import com.intellij.execution.actions.ConfigurationContext
-import com.intellij.execution.actions.ConfigurationFromContext
-import com.intellij.execution.actions.LazyRunConfigurationProducer
-import com.intellij.execution.configurations.ConfigurationFactory
-import com.intellij.openapi.util.Ref
+import com.intellij.execution.Location
+import com.intellij.openapi.module.Module
+import com.intellij.psi.PsiClass
 import com.intellij.psi.PsiElement
-import io.kotest.plugin.intellij.KotestRunConfiguration
-import io.kotest.plugin.intellij.KotestConfigurationFactory
-import io.kotest.plugin.intellij.KotestConfigurationType
-import io.kotest.plugin.intellij.psi.enclosingKtClass
-import io.kotest.plugin.intellij.styles.SpecStyle
+import com.intellij.psi.impl.source.tree.LeafPsiElement
 import io.kotest.plugin.intellij.Test
+import io.kotest.plugin.intellij.psi.enclosingKtClassOrObject
+import io.kotest.plugin.intellij.styles.SpecStyle
+import org.jetbrains.kotlin.asJava.toLightClass
+import org.jetbrains.kotlin.platform.TargetPlatform
+import org.jetbrains.kotlin.platform.isCommon
+import org.jetbrains.kotlin.platform.jvm.isJvm
+import org.jetbrains.kotlin.platform.konan.isNative
+import org.jetbrains.kotlin.psi.KtClass
 
-/**
- * A run configuration creates the details of a particular run (in the drop down run box).
- *
- * A Run producer is called to create a [KotestRunConfiguration] from the [KotestConfigurationFactory]
- * and then again to configure it with a context.
- *
- * This producer creates run configurations for individual tests.
- */
-class TestPathRunConfigurationProducer : LazyRunConfigurationProducer<KotestRunConfiguration>() {
+class TestPathRunConfigurationProducer: AbstractKotestGradleConfigurationProducer() {
+   override fun isApplicable(module: Module, platform: TargetPlatform) = platform.isCommon() || platform.isJvm() || platform.isNative()
 
-   /**
-    * Returns the [KotestConfigurationFactory] used to create [KotestRunConfiguration]s.
-    */
-   override fun getConfigurationFactory(): ConfigurationFactory = KotestConfigurationFactory(KotestConfigurationType())
+   override fun resolveTarget(
+      sourceElement: PsiElement?
+   ): TestTarget? {
+      val element = sourceElement ?: return null
+      val test = findTest(element) ?: return null
+      val psiClass = element.enclosingKtClassOrObject()?.toLightClass() ?: return null
 
-   /**
-    * Returns true if the given context is applicable to this run producer.
-    * This implementation will return true if the source element is a test in any of the [SpecStyle]s.
-    */
-   override fun setupConfigurationFromContext(configuration: KotestRunConfiguration,
-                                              context: ConfigurationContext,
-                                              sourceElement: Ref<PsiElement>): Boolean {
-      val element = sourceElement.get()
-      if (element != null) {
-         val test = findTest(element)
-         if (test != null) {
-
-            val ktclass = element.enclosingKtClass()
-            if (ktclass != null) {
-               configuration.setTestPath(test.testPath())
-               configuration.setSpec(ktclass)
-               configuration.setModule(context.module)
-               configuration.name = generateName(ktclass, test)
-
-               return true
-            }
-         }
-      }
-      return false
+      return TestTarget.TestPath(psiClass, test)
    }
 
-   // compares the existing configurations to the context in question
-   // if one of the configurations matches then this should return true
-   override fun isConfigurationFromContext(configuration: KotestRunConfiguration,
-                                           context: ConfigurationContext): Boolean {
-      val element = context.psiLocation
-      if (element != null) {
-         val test = findTest(element)
-         if (test != null) {
-            val spec = element.enclosingKtClass()
-            return configuration.getTestPath() == test.testPath()
-               && configuration.getPackageName().isNullOrBlank()
-               && configuration.getSpecName() == spec?.fqName?.asString()
+   override fun getPsiClassForLocation(contextLocation: Location<*>): PsiClass? {
+      val leaf = contextLocation.psiElement
+      if (leaf is LeafPsiElement) {
+         val spec = leaf.enclosingKtClassOrObject()
+         if (spec is KtClass) {
+            return spec.toLightClass()
          }
       }
-      return false
+      return super.getPsiClassForLocation(contextLocation)
    }
 
    private fun findTest(element: PsiElement): Test? {
@@ -76,19 +44,5 @@ class TestPathRunConfigurationProducer : LazyRunConfigurationProducer<KotestRunC
          .filter { it.isContainedInSpec(element) }
          .mapNotNull { it.findAssociatedTest(element) }
          .firstOrNull()
-   }
-
-   /**
-    * When two configurations are created from the same context by two different producers, checks if the configuration created by
-    * this producer should be discarded in favor of the other one.
-    *
-    * We always return true because no one else should be creating Kotest configurations.
-    */
-   override fun isPreferredConfiguration(self: ConfigurationFromContext?, other: ConfigurationFromContext?): Boolean {
-      return true
-   }
-
-   override fun shouldReplace(self: ConfigurationFromContext, other: ConfigurationFromContext): Boolean {
-      return false
    }
 }
